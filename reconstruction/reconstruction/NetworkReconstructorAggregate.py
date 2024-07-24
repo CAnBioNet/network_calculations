@@ -362,7 +362,10 @@ def calculateCorrelations(config, filteredData, cores=None):
 	filteredData = filteredData.assign_coords(coords={"metatreatment": ("organism", metatreatmentCoords)})
 
 	# Used to identify the current run's shared memory
-	runnerId = str(time.time())
+	# NB: macOS limits shared memory names to 31 characters, so we need to round to
+	#     the nearest millisecond rather than using the full timestamp
+	#     https://stackoverflow.com/questions/38049068/osx-shm-open-returns-enametoolong
+	runnerId = str(int(time.time() * 1000))
 
 	def prepareSpearman(treatmentData):
 		spearmanKwargs = {}
