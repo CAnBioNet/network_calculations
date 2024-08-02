@@ -13,22 +13,25 @@ Python version: 3.8.10
 	python ./analysis/assess_network.py --file ./example_datasets_and_commands/nash/output/network_output/correlations_bw_signif_measurables.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/
 
 # 3. Analyze the network
-	(Optional) - Generate partitions for use in BiBC calculation using either Infomap or the Louvain algorithm
-	(Optional) - Calculate the distance path between two pathways (subnetworks/clusters) by calculating the shortest path between each member of those clusters and taking the average of those values
+	(OPTIONAL) - Generate partitions for use in BiBC calculation using either Infomap or the Louvain algorithm
 
-	python ./analysis/infomap_assignment.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --network-format csv --map ./example_datasets_and_commands/nash/input/type_map.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/
+		python ./analysis/infomap_assignment.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --network-format csv --map ./example_datasets_and_commands/nash/input/type_map.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/
 
-	python ./analysis/louvain_partition.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --network-format csv --map ./example_datasets_and_commands/nash/input/type_map.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/
+		python ./analysis/louvain_partition.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --network-format csv --map ./example_datasets_and_commands/nash/input/type_map.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/
 
-	python ./analysis/find_all_shortest_paths_bw_subnets.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --network-format csv --map ./example_datasets_and_commands/nash/input/type_map.csv --node-groups lipid_metab RNAseq --out-dir ./example_datasets_and_commands/nash/output/network_output/ (**time consuming**)
+	(OPTIONAL) - Calculate the distance path between two pathways (subnetworks/clusters) by calculating the shortest path between each member of those clusters and taking the average of those values (**time consuming**)
 
-	(REQUIRED) - Calculate network, subnetwork, and node properties, referring to bibc_pairs_list.csv to calculate all BiBC between all pairs of node types
-               python ./analysis/calc_network_properties.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --bibc --bibc-groups node_groups_list --bibc-calc-type bibc --map ./example_datasets_and_commands/nash/input/type_map.csv --node-groups-list ./example_datasets_and_commands/nash/input/bibc_pairs_list.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/ (**time consuming**)
+		python ./analysis/find_all_shortest_paths_bw_subnets.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --network-format csv --map ./example_datasets_and_commands/nash/input/type_map.csv --node-groups lipid_metab RNAseq --out-dir ./example_datasets_and_commands/nash/output/network_output/
+
+	(REQUIRED) - Calculate network, subnetwork, and node properties, referring to bibc_pairs_list.csv to calculate all BiBC between all pairs of node types (**time consuming**)
+
+		python ./analysis/calc_network_properties.py --network ./example_datasets_and_commands/nash/output/network_output/network_output_comp.csv --bibc --bibc-groups node_groups_list --bibc-calc-type bibc --map ./example_datasets_and_commands/nash/input/type_map.csv --node-groups-list ./example_datasets_and_commands/nash/input/bibc_pairs_list.csv --out-dir ./example_datasets_and_commands/nash/output/network_output/
 
 # 4. Create random networks and analyze
 	python ./random_networks/create_random_networks.py --template-network ./example_datasets_and_commands/nash/output/network_output/network.pickle --networks-file ./example_datasets_and_commands/nash/output/network_output/all_random_networks.zip -n 100
 
-	python ./random_networks/compute_network_stats.py --networks-file ./example_datasets_and_commands/nash/output/network_output/all_random_networks.zip --bibc-groups node_types --bibc-calc-type bibc --stats-file example_datasets_and_commands/nash/output/network_output/random_network_analysis.zip --node-map ./example_datasets_and_commands/nash/input/type_map.csv --node-groups lipid_metab RNAseq (**time consuming**)
+	(**time consuming**)
+	python ./random_networks/compute_network_stats.py --networks-file ./example_datasets_and_commands/nash/output/network_output/all_random_networks.zip --bibc-groups node_types --bibc-calc-type bibc --stats-file example_datasets_and_commands/nash/output/network_output/random_network_analysis.zip --node-map ./example_datasets_and_commands/nash/input/type_map.csv --node-groups lipid_metab RNAseq
 
 	python ./random_networks/synthesize_network_stats.py --network-stats-file ./example_datasets_and_commands/nash/output/network_output/random_network_analysis.zip --synthesized-stats-file ./example_datasets_and_commands/nash/output/network_output/random_networks_synthesized.csv
 
