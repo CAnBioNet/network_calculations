@@ -96,6 +96,20 @@ class Config:
 		else:
 			return config
 
+# By default `json` will allow dicts to have multiple items with the same keys when parsing JSON.
+# For our purposes, this will almost certainly be uninentional and not do what the user wants,
+# so we use `object_pairs_hook` to detect and raise an error if it occurs.
+# Adapted from https://stackoverflow.com/questions/14902299/json-loads-allows-duplicate-keys-in-a-dictionary-overwriting-the-first-value
+def errorOnDuplicateKeys(orderedPairs):
+	# Since we're using this hook, must convert the list of ordered pairs into a dict ourselves
+	d = {}
+	for k, v in orderedPairs:
+		if k in d:
+			raise ValidationFailedError(f"The key {k} was used multiple times in the same dictionary in the config file. Each key should be unique.")
+		else:
+			d[k] = v
+	return d
+
 def parseConfig(configSpec, jsonConfig):
 	config = configSpec.parse(jsonConfig)
 	config = configSpec.validate(config)
@@ -103,7 +117,7 @@ def parseConfig(configSpec, jsonConfig):
 
 def parseConfigFile(configSpec, configFilePath):
 	configFile = open(configFilePath, "r")
-	jsonConfig = json.load(configFile)
+	jsonConfig = json.load(configFile, object_pairs_hook=errorOnDuplicateKeys)
 	configFile.close()
 
 	return parseConfig(configSpec, jsonConfig)
