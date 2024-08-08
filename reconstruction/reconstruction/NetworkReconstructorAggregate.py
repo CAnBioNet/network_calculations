@@ -212,8 +212,13 @@ def correctDifferencePValues(config, combinedPValues):
 	correctMethod = config["differenceCorrectPValuesMethod"]
 
 	def fdr(typePValues):
-		rejected, correctedPValues = multitest.fdrcorrection(typePValues)
-		return correctedPValues
+		# Exclude NaNs when correcting p-values
+		nonNanIndices = numpy.argwhere(~numpy.isnan(typePValues.data)).flatten()
+		nonNanPValues = typePValues[nonNanIndices].data
+		rejected, correctedPValues = multitest.fdrcorrection(nonNanPValues)
+		correctedPValuesWithNans = typePValues.data
+		numpy.put(correctedPValuesWithNans, nonNanIndices, correctedPValues)
+		return correctedPValuesWithNans
 
 	methodMap = {
 		"fdr": fdr
@@ -505,8 +510,9 @@ def correctCorrelationPValues(config, combinedPValues):
 	correctMethod = config["correlationCorrectPValuesMethod"]
 
 	def fdr(pValues):
-		nonNanIndices = numpy.argwhere(~numpy.isnan(pValues))
-		nonNanPValues = pValues[nonNanIndices].flatten()
+		# Exclude NaNs when correcting p-values
+		nonNanIndices = numpy.argwhere(~numpy.isnan(pValues)).flatten()
+		nonNanPValues = pValues[nonNanIndices]
 		rejected, correctedPValues = multitest.fdrcorrection(nonNanPValues)
 		correctedPValuesWithNans = pValues
 		numpy.put(correctedPValuesWithNans, nonNanIndices, correctedPValues)
