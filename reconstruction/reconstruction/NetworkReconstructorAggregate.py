@@ -1,6 +1,7 @@
 import bottleneck
 from functools import partial
 import itertools
+import math
 from multiprocessing import Pool, shared_memory
 import numpy
 from scipy import stats, special
@@ -103,7 +104,8 @@ class CorrelationWorkerSpearman(CorrelationWorker):
 
 		rEps = numpy.finfo(type(r)).eps
 		if abs(abs(r) - 1) <= rEps:
-			p = 0
+			# TODO: Precompute or memoize factorials?
+			p = 2 / math.factorial(len(x_ranked)) # Result of permutation test for r=1 or r=-1
 			r = numpy.sign(r) # Round r to 1 or -1
 		else:
 			dof = len(x_ranked) - 2
