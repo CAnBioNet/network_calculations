@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Author: Nolan K Newman <newmanno@oregonstate.edu>
 Last updated: 7/19/23
@@ -44,6 +45,7 @@ optionalArgGroup.add_argument("--bibc-calc-type", dest="bibc_calc_type", choices
 optionalArgGroup.add_argument("--map", type=str, help= "Required if node_types is specified for --bibc-groups. CSV of nodes and their types (i.e. otu, pheno, gene, etc.)")
 optionalArgGroup.add_argument("--node-groups", nargs = 2, type=str, dest="node_groups", help= "2 args; Required if node_types is specified for --bibc-groups. The two groups of nodes to calculate BiBC/RBC on")
 optionalArgGroup.add_argument("--node-groups-list", dest = "node_groups_list", help= "Similar to the --node-groups argument, but --node-groups-list is a CSV file with all groups that BiBC will be calculated between, one pair per line")
+optionalArgGroup.add_argument("--mixed", action="store_true", help="Supplied network is mixed (contains both undirected and directed edges)")
 
 args = parser.parse_args()
 outdir = args.outdir
@@ -73,10 +75,14 @@ if args.bibc:
 
     bibc_calc_type = args.bibc_calc_type
 
-def import_nw(fname):
-    
-    row_count = 0 
-    G = nx.Graph()
+def import_nw(fname, mixed):
+    row_count = 0
+
+    if mixed:
+        # TODO: Create MixedGraph class and override nx functions there
+        G = nx.DiGraph()
+    else:
+        G = nx.Graph()
     
     with open(fname) as csvfile:     
         file = csv.reader(csvfile, delimiter = ',')
@@ -91,12 +97,25 @@ def import_nw(fname):
                 except ValueError:
                     print("\n\nERROR: Please make sure 'partner1' and 'partner2' are names of two columns in the input file.\n\n")
 
-            parameter1 = row[p1]
-            parameter2 = row[p2] 
-            
+                if mixed:
+                    try:
+                        d = int(row.index("directed"))
+                    except ValueError:
+                        raise Exception("Input file must contain a 'directed' column when network is mixed")
             # Find each node that made it into the final network and the direction of the edge   
-            if row_count != 0:
+            else:
+                parameter1 = row[p1]
+                parameter2 = row[p2]
+
+                if mixed:
+                    directed_str = row[d].lower()
+                    if not (directed_str == "true" or directed_str == "false"):
+                        raise Exception("'directed' column should only contain the values 'true' and 'false'")
+                    directed = directed_str == "true"
+
                 G.add_edge(parameter1, parameter2)
+                if mixed and not directed:
+                    G.add_edge(parameter2, parameter1)
     
             row_count += 1
 
@@ -104,16 +123,41 @@ def import_nw(fname):
     return(G)
 
 def connected_component_subgraphs(network):
-	return [network.subgraph(component) for component in nx.connected_components(network)]
+    if network.is_directed():
+        connected_component_func = nx.weakly_connected_components
+    else:
+        connected_component_func = nx.connected_components
+    return [network.subgraph(component) for component in connected_component_func(network)]
+
+def get_node_degree(G, n):
+    if G.is_directed():
+        all_edges = list(G.in_edges(n)) + list(G.out_edges(n))
+        seen_edges = []
+        for u, v in all_edges:
+            if (v, u) not in seen_edges:
+                seen_edges.append((u, v))
+        return len(seen_edges)
+    else:
+        return G.degree(i)
+
+def get_number_of_edges(G):
+    if G.is_directed():
+        seen_edges = []
+        for u, v in G.edges():
+            if (v, u) not in seen_edges:
+                seen_edges.append((u, v))
+        return len(seen_edges)
+    else:
+        return nx.number_of_edges(G)
 
 if __name__ == '__main__':
 
     network = args.network
     
-    G = import_nw(network)
+    G = import_nw(network, mixed=args.mixed)
     
     print("\nNumber of nodes in network: " + str(G.number_of_nodes()))
-    print("Number of edges in network: " + str(G.number_of_edges()) + "\n")
+    print("Number of edges in network: " + str(get_number_of_edges(G)) + "\n")
     
     class dictionary(dict):
         def __init__(self):
@@ -288,7 +332,7 @@ if __name__ == '__main__':
         return_mod['mod1'] = large_mod
         return_mod['mod2'] = second_large_mod
 
-        return(return_mod)        
+        return(return_mod)
     
     # Calculates BiBC (more correctly called restricted betweenness centrality) for each node
     def restricted_betweenness_centrality(G,nodes_0,nodes_1,bibctype):
@@ -319,7 +363,11 @@ if __name__ == '__main__':
             for t in nodes_1:
                 # might want to avoid putting the whole thing in memory
                 # betweenness centrality does not count the endpoints (v not in s,t)
-                paths_st = [x for x in list(all_shortest_paths(G,s,t)) if len(x) > 2]
+                try:
+                    shortest_paths = list(all_shortest_paths(G,s,t))
+                except nx.NetworkXNoPath:
+                    shortest_paths = []
+                paths_st = [x for x in shortest_paths if len(x) > 2]
                 n_paths = len(paths_st)
                 nodes_to_update = flatten([p[1:-1] for p in paths_st])
                 for n in nodes_to_update:
@@ -406,6 +454,9 @@ if __name__ == '__main__':
         network_name = network[:-4]
     
     with open(outdir + "network_properties.txt", "w") as file:
+        if G.is_directed():
+            # TODO: Verify remaining properties
+            print("WARNING: Mixed networks is an experimental feature. Not all network properties have been verified to work as expected.")
 
         #------------------------------------------------#
         ###             Network properties             ###
@@ -415,13 +466,13 @@ if __name__ == '__main__':
         ### Number of nodes ###
         print("Finding number of nodes...")
         nnodes = nx.number_of_nodes(G)
-        nnodes_str = str(nx.number_of_nodes(G))
+        nnodes_str = str(nnodes)
         file.write("Number_of_nodes\t" + nnodes_str + "\n")
     
         ### Number of edges ###
         print("Finding number of edges...")
-        nedges = nx.number_of_edges(G)
-        nedges_str = str(nx.number_of_edges(G))
+        nedges = get_number_of_edges(G)
+        nedges_str = str(nedges)
         file.write("Number_of_edges\t" + nedges_str + "\n")
 
         ### Mean degree ###
@@ -440,36 +491,38 @@ if __name__ == '__main__':
         file.write("Average_clustering_coefficient\t" + str(round(mean(cc_holder), 5)) + "\n")
         #file.write("Average_clustering_coefficient\t" + str(nx.average_clustering(G)) + "\n")
         
+        connected_components = connected_component_subgraphs(G)
 
         ### Mean geodesic path length ###
         # Finds ASPL for each node in the giant component, then find the average of those nodes
         #print("Finding average shortest path...")
-        gc = max(connected_component_subgraphs(G), key=len)
+        gc = max(connected_components, key=len)
         #ASPL = nx.average_shortest_path_length(gc)
         #ASPL = ASPL + str(a) + "\t"  
         #file.write("Mean_geodesic_path_length\t" + str(round(ASPL, 5)) + "\n")    
 
         ### Giant component ###
         print("Finding size of giant component...")
-        giant = len(max(connected_component_subgraphs(G), key=len))/len(G)
+        giant = len(gc)/len(G)
         file.write("Giant_component\t" + str(round(giant, 5)) + "\n")
 
         ### Number of components ###
         print("Finding number of components...")
-        ncc = str(nx.number_connected_components(G))
+        ncc = str(len(connected_components))
         file.write("Number_of_connected_components\t" + ncc + "\n")
     
         ### Freeman centrality ###
         print("Finding freeman centrality...")
         max_degree = 0
         for i in G:
-            if G.degree[i] > max_degree:
-                max_degree = G.degree[i]
+            degree = get_node_degree(G, i)
+            if degree > max_degree:
+                max_degree = degree
         
         FC_list = []
         if nnodes > 2:
             for i in G:
-                FC_node = (max_degree - G.degree[i])/((nnodes - 1) * (nnodes - 2))
+                FC_node = (max_degree - get_node_degree(G, i))/((nnodes - 1) * (nnodes - 2))
                 FC_list.append(FC_node)
             freeman_cent = sum(FC_list)
             file.write("Freeman_centralization\t" + str(round(freeman_cent, 5)) + "\n")    
@@ -487,16 +540,19 @@ if __name__ == '__main__':
         file.write("Mean_closeness_centrality\t" + str(round(mean_closeness_cent, 5)) + "\n")
         
         ### Modularity ###
-        print("Finding modularity...")
-        p = community_louvain.best_partition(G, random_state=1, randomize = False)
-        Q = community_louvain.modularity(p,G)
-        print("Modularity of best partition of graph: ", str(Q))
-        file.write("Modularity\t" + str(round(Q, 5)) + "\n")
+        if G.is_directed():
+            print("Modularity not currently supported for mixed networks.")
+        else:
+            print("Finding modularity...")
+            p = community_louvain.best_partition(G, random_state=1, randomize = False)
+            Q = community_louvain.modularity(p,G)
+            print("Modularity of best partition of graph: ", str(Q))
+            file.write("Modularity\t" + str(round(Q, 5)) + "\n")
 
         ### Median comp size over total number of nodes ###
         print("Finding median component size over number of nodes...")
         med_list = []
-        for g in connected_component_subgraphs(G):
+        for g in connected_components:
             med_list.append(nx.number_of_nodes(g))
         med_over_nnodes = median(med_list)/nnodes
         file.write("Median_comp_size_over_#_nodes\t" + str(round(med_over_nnodes, 5)) + "\n")
@@ -516,7 +572,7 @@ if __name__ == '__main__':
             We calculate dF later on as a node property
         '''
         sum_numerator = 0
-        for comp in nx.connected_components(G):
+        for comp in connected_components:
             comp_size = len(comp)
             sum_numerator += comp_size*(comp_size-1)
         F = 1 - (sum_numerator/(nnodes * (nnodes - 1)))         
@@ -551,7 +607,7 @@ if __name__ == '__main__':
                     total_degree = 0
                     sg = G.subgraph(v)
                     for i in sg.nodes():
-                        total_degree += sg.degree[i]
+                        total_degree += get_node_degree(sg, i)
                     mean_degree = total_degree / nx.number_of_nodes(sg)
                     meandeg_dict[k] = mean_degree # Make a new key with the name of k and the value of mean_degree
                     file.write(str(k) + "_mean_degree\t" + str(mean_degree) + "\n")
@@ -562,6 +618,10 @@ if __name__ == '__main__':
             file.close()
             
         elif bibc_choice == "modularity":
+            # TODO: Add support for mixed networks
+            if G.is_directed():
+                raise Exception("The \"modularity\" option for \"--bibc_groups\" is not yet supported for mixed networks")
+
             with open(outdir + "subnetwork_properties.txt", "w") as file:
         
                 file.write("### Subnetwork properties ###\n")
@@ -586,7 +646,7 @@ if __name__ == '__main__':
                     total_degree = 0
                     sg = G.subgraph(v)
                     for i in sg.nodes():
-                        total_degree += sg.degree[i]
+                        total_degree += get_node_degree(sg, i)
                     mean_degree = total_degree / nx.number_of_nodes(sg)
                     meandeg_dict[k] = mean_degree # Make a new key with the name of k and the value of mean_degree
                     file.write(str(k) + "_mean_degree\t" + str(mean_degree) + "\n")
@@ -617,14 +677,15 @@ if __name__ == '__main__':
         print("Finding each node's degree...")
         node_degrees = ""
         for i in node_names_sort:
-            node_degrees = node_degrees + str(G.degree(i)) + "\t"  
+            degree = get_node_degree(G, i)
+            node_degrees = node_degrees + str(degree) + "\t"
         file.write("Node_degrees\t" + node_degrees + "\n")    
 
         ### Node strength ###
         print("Finding each node's strength...")
         strength = ""
         for i in node_names_sort:
-            strength = strength + str(round(G.degree(i,weight='weight'), 5)) + "\t"
+            strength = strength + str(round(get_node_degree(G, i), 5)) + "\t"
         file.write("Node_strength\t" + strength + "\n")
     
         ###   Node clustering   ###
@@ -642,15 +703,18 @@ if __name__ == '__main__':
             node_close = node_close + str(round(nx.closeness_centrality(G,i), 5)) + "\t"
         file.write("Node_closeness\t" + node_close + "\n")    
         
-        ###   Eigenvector centrality   ###
-        # Note: un-commented this on 2/19/2020. Had issues with it before. Trying again.
-        print("Finding each node's eigenvector centrality...")
-        ecen_dict = nx.eigenvector_centrality(G)
-        ecen_dict_sorted = SortedDict(ecen_dict)
-        ecen = ""
-        for key,value in ecen_dict_sorted.items():
-            ecen = ecen + str(round(value, 5)) + "\t"    
-        file.write("Eigenvalue_centrality\t" + ecen + "\n")
+        if G.is_directed():
+            print("Eigenvector centrality not currently supported for mixed networks.")
+        else:
+            ###   Eigenvector centrality   ###
+            # Note: un-commented this on 2/19/2020. Had issues with it before. Trying again.
+            print("Finding each node's eigenvector centrality...")
+            ecen_dict = nx.eigenvector_centrality(G)
+            ecen_dict_sorted = SortedDict(ecen_dict)
+            ecen = ""
+            for key,value in ecen_dict_sorted.items():
+                ecen = ecen + str(round(value, 5)) + "\t"
+            file.write("Eigenvalue_centrality\t" + ecen + "\n")
 
         ###   Betweenness centrality   ###
         '''
@@ -728,13 +792,8 @@ if __name__ == '__main__':
         # If the giant component is the same size as the second largest component, then return no values for BiBC.
         # Find the size of the second largest component to see if it is the same size as the largest comp
         subg = sorted(connected_component_subgraphs(G), key = len, reverse = True)
-
-        # Make an empty list and string to add the output to. These will be updated right away if there are multiple giant components, 
-        # or will be updated at the end if there is only one gc 
-        otu_pheno_value_list = []        
-        otu_pheno_value_str = ""
          
-        def parse_RBC_results(rbc_list, otu_pv_list, otu_pv_str):
+        def parse_RBC_results(rbc_list):
             '''
             
             Arguments:
@@ -761,7 +820,10 @@ if __name__ == '__main__':
 
             # Order the previously made dictionary by key name so it can be input into the properties file
             ordered_bibc = OrderedDict(sorted(bibc_dict_w_NAs.items()))
-                            
+
+            otu_pv_list = []
+            otu_pv_str = ""
+
             for key,value in ordered_bibc.items():
                 otu_pv_list.append(value) 
                 
@@ -771,7 +833,7 @@ if __name__ == '__main__':
     
             return(otu_pv_str)      
         
-        def BiBC(choice, nodes_in_gc, giantcomp, calc_type, otu_pv_list, otu_pv_str, t1 = None, t2 = None, mapfile = None):
+        def BiBC(choice, nodes_in_gc, giantcomp, calc_type, t1 = None, t2 = None, mapfile = None):
             '''
             Calculates RBC/BiBC on the specified nodes 
         
@@ -784,25 +846,42 @@ if __name__ == '__main__':
                 # Pass the gc nodes to the function that will assign the correct node types to each of the nodes    
                 assigned_types = assign_node_type(mapfile, nodes_in_gc, t1, t2)
 
-                # Calculate rbc using the above function which takes the outputs of assign_node_type
-                rbc = restricted_betweenness_centrality(giantcomp, assigned_types['Type1'], assigned_types['Type2'], bibc_calc_type)
-                
-                parse_rbc_str = parse_RBC_results(rbc, otu_pv_list, otu_pv_str)
-                return_str = "BiBC" + "_" + t1 + "_" + t2 + "\t" + parse_rbc_str + "\n"
+                if G.is_directed():
+                    rbc_1 = restricted_betweenness_centrality(giantcomp, assigned_types['Type1'], assigned_types['Type2'], bibc_calc_type)
+                    parse_rbc_str_1 = parse_RBC_results(rbc_1)
+                    return_str_1 = "BiBC" + "_" + t1 + "_" + t2 + "\t" + parse_rbc_str_1 + "\n"
+
+                    rbc_2 = restricted_betweenness_centrality(giantcomp, assigned_types['Type2'], assigned_types['Type1'], bibc_calc_type)
+                    parse_rbc_str_2 = parse_RBC_results(rbc_2)
+                    return_str_2 = "BiBC" + "_" + t2 + "_" + t1 + "\t" + parse_rbc_str_2 + "\n"
+
+                    return_str = return_str_1 + return_str_2
+                else:
+                    # Calculate rbc using the above function which takes the outputs of assign_node_type
+                    rbc = restricted_betweenness_centrality(giantcomp, assigned_types['Type1'], assigned_types['Type2'], bibc_calc_type)
+                    parse_rbc_str = parse_RBC_results(rbc)
+                    return_str = "BiBC" + "_" + t1 + "_" + t2 + "\t" + parse_rbc_str + "\n"
 
                 return(return_str)
 
             # Otherwise, if they wish to use modularity as the BiBC parameter...
+            # TODO: Add support for mixed networks
             elif choice == "modularity":
+                if G.is_directed():
+                    raise Exception("The \"modularity\" option for \"--bibc_groups\" is not yet supported for mixed networks")
                 nodes_from_bibc_mod = bibc_mod(giantcomp)
                 rbc = restricted_betweenness_centrality(giantcomp, nodes_from_bibc_mod['mod1'], nodes_from_bibc_mod['mod2'], bibc_calc_type)
-                parse_rbc_str = parse_RBC_results(rbc, otu_pv_list, otu_pv_str)
+                parse_rbc_str = parse_RBC_results(rbc)
                 return_str = "BiBC_between_modular_regions\t" + parse_rbc_str + "\n"                
                 
                 return(return_str)
             
             # Or, if they wish to calculate BiBC between multiple pairs of data types
+            # TODO: Add support for mixed networks
             elif choice == "node_groups_list":
+                if G.is_directed():
+                    raise Exception("The \"node_groups_list\" option for \"--bibc_groups\" is not yet supported for mixed networks")
+
                 all_group_pairs = node_groups_from_list(args.node_groups_list)
                 
                 multi_groups_out_str = ""
@@ -833,6 +912,10 @@ if __name__ == '__main__':
                 if len(subg[0]) == len(subg[1]):
                     print("There are multiple giant components. BiBC/RBC of each node = NA.")
     
+                    # Make an empty list and string to add the output to.
+                    otu_pheno_value_list = []
+                    otu_pheno_value_str = ""
+
                     # Make a list that is the length of the number of nodes in the whole network and write "NA" for the BiBC of each 
                     # node, then add those to a string and write the string to the output file
                     for i in range(len(node_names_sort)):
@@ -847,18 +930,18 @@ if __name__ == '__main__':
                 elif (len(subg[0]) != len(subg[1])):
                     print("BiBC/RBC being calculated for giant component.")
                     if bibc_choice == "node_types" or bibc_choice == "node_groups_list":
-                        output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type, otu_pheno_value_list, otu_pheno_value_str, t1 = node_type1, t2 = node_type2, mapfile = node_input_file)
+                        output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type, t1 = node_type1, t2 = node_type2, mapfile = node_input_file)
                     elif bibc_choice == "modularity":
-                        output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type, otu_pheno_value_list, otu_pheno_value_str)                        
+                        output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type)
                     file.write(output_str)
 
             # If there is only one giant comp, then compute BiBC on whole graph.        
             else:
                 print("There is only one component. BiBC being calculated on the entire graph.")
                 if bibc_choice == "node_types" or bibc_choice == "node_groups_list":                
-                    output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type, otu_pheno_value_list, otu_pheno_value_str, t1 = node_type1, t2 = node_type2, mapfile = node_input_file)
+                    output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type, t1 = node_type1, t2 = node_type2, mapfile = node_input_file)
                 elif bibc_choice == "modularity":
-                    output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type, otu_pheno_value_list, otu_pheno_value_str)
+                    output_str = BiBC(bibc_choice, gc_nodes, gc, bibc_calc_type)
                     
                 file.write(output_str)
     
