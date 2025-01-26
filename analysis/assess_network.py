@@ -121,15 +121,16 @@ def find_unique_networks(df):
 net_file_trimmed = net_file[:-4] # trim the ".csv" or ".txt" from the input file string   
     
 corr_file = pd.read_csv(net_file)
-corr_file.columns = corr_file.columns.str.replace(' ', '_')
-corr_file.columns = [*corr_file.columns[:-1], 'Final_Network_Value']
 
-corr_file['combined_Coefficient_correlation_Direction'] = corr_file['combined_Coefficient_correlation_Direction'].astype('int')
+# TODO: Remove underscores everywhere
+corr_file['combined_Coefficient_correlation_Direction'] = corr_file['combined Coefficient correlation Direction'].astype('int')
 corr_file['partner1_FC_direction'] = corr_file['partner1_FC_direction'].astype('int')
 corr_file['partner2_FC_direction'] = corr_file['partner2_FC_direction'].astype('int')
 corr_file['IfFoldChangeDirectionMatch'] = corr_file['IfFoldChangeDirectionMatch'].astype('int')
 corr_file['PUC'] = corr_file['PUC'].astype('int')
-corr_file['Final_Network_Value'] = corr_file['Final_Network_Value'].astype('int')
+corr_file['Final_Network_Value'] = corr_file['Final Network Value (0: No edge, 1: Positive edge, -1: Negative edge)'].astype('int')
+corr_file['Edge_Type'] = corr_file["Edge Type"]
+corr_file['All_Non-PUC_Filters_Passed'] = corr_file['All Non-PUC Filters Passed']
 
 
 nws_by_type = find_unique_networks(corr_file)
